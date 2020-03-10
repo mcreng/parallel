@@ -9,7 +9,6 @@
 #include <cmath>
 #include <initializer_list>
 #include <iostream>
-#include <numeric>
 #include <vector>
 
 void scheduler_v1(int my_rank, int p, int len, int &start_idx, int &end_idx) {
@@ -27,7 +26,7 @@ void scheduler_v1(int my_rank, int p, int len, int &start_idx, int &end_idx) {
 }
 
 void scheduler_v2(int my_rank, int p, int len, int &start_idx, int &end_idx) {
-    const int BUFFER_SIZE = 4;
+    const int BUFFER_SIZE = 32;
 
     if (len < BUFFER_SIZE * p) {
         int _p = std::floor(len / (float)BUFFER_SIZE);
@@ -51,6 +50,8 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
     int curr_max = 0;
     MPI_Bcast(&a_len, 1, MPI_INT, 0, comm);
     MPI_Bcast(&b_len, 1, MPI_INT, 0, comm);
+    int min_len = std::min(a_len, b_len);
+    int max_len = std::max(a_len, b_len);
 
     if (my_rank != 0) {
         a = new char[a_len + 1];
@@ -59,7 +60,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
     MPI_Bcast(a, a_len + 1, MPI_CHAR, 0, comm);
     MPI_Bcast(b, b_len + 1, MPI_CHAR, 0, comm);
 
-    int max_diag_size = std::min(a_len, b_len) + 2;
+    int max_diag_size = min_len + 2;
 
     std::vector<int> diagonal_t_p = std::vector<int>(max_diag_size, 0);  // current diagonal (partial)
     std::vector<int> diagonal_t = std::vector<int>(max_diag_size, 0);
@@ -70,17 +71,18 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
     for (int iter = 1; iter <= a_len + b_len - 1; ++iter) {
         // len stores how many values are there in the current diagonal.
         int len = 0;
-        if (iter < std::min(a_len, b_len) - 1)
+        if (iter < min_len - 1)
             len = iter + 2;
-        else if (iter < std::max(a_len, b_len) - 1)
-            len = std::min(a_len, b_len) + 1;
+        else if (iter < max_len - 1)
+            len = min_len + 1;
         else
-            len = std::min(a_len, b_len) - (iter - std::max(a_len, b_len));
+            len = a_len + b_len - iter;
 
         scheduler_v2(my_rank, p, len, start_idx, end_idx);
 
         if (end_idx > start_idx) {
-            diagonal_t_p = std::vector<int>(len, 0);
+            // diagonal_t_p = std::vector<int>(len, 0);
+            std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len - 1, 0);
             for (int j = start_idx; j < end_idx; ++j) {
                 int x = std::min(iter, a_len - 1) + 1 - j;
                 int y = iter + 1 - x;
@@ -98,11 +100,12 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                 }
             }
         }
-        diagonal_t_2 = std::vector<int>(len, 0);
+        // diagonal_t_2 = std::vector<int>(len, 0);
+        std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len - 1, 0);
 
         MPI_Allreduce(&diagonal_t_p[0], &diagonal_t_2[0], len, MPI_INT, MPI_SUM, comm);
 
-        if (len <= 100) {
+        if (len <= 32) {
             if (my_rank == 0) {
                 curr_max = std::max(curr_max, *std::max_element(diagonal_t_2.begin(), diagonal_t_2.end()));
             }
@@ -117,6 +120,9 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
 
         std::swap(diagonal_t_2, diagonal_t_1);
     }
+
+    delete[] a;
+    delete[] b;
 
     return curr_max;
 }
