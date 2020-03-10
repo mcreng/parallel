@@ -107,7 +107,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                 curr_max = std::max(curr_max, *std::max_element(diagonal_t_2.begin(), diagonal_t_2.end()));
             }
         } else {
-            curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin(), diagonal_t_p.end()));
+            curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin() + start_idx, diagonal_t_p.begin() + end_idx - 1));
             if (my_rank == 0) {
                 MPI_Reduce(MPI_IN_PLACE, &curr_max, 1, MPI_INT, MPI_MAX, 0, comm);
             } else {
