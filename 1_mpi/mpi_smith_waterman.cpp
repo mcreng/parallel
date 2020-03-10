@@ -12,56 +12,39 @@
 #include <numeric>
 #include <vector>
 
-void scheduler_v1(int p, int len, vector<int> &v_start_idx, vector<int> &v_end_idx, vector<int> &v_len_idx, vector<int> &v_cum_idx) {
-    int ceil = std::ceil(len / (float)p);
-    int floor = std::floor(len / (float)p);
+void scheduler_v1(int my_rank, int p, int len, int &start_idx, int &end_idx) {
     int mod = len % p;
+    int ceil = len / p + (mod != 0);
     if (mod == 0) mod = p;
 
-    for (int rank = 0; rank < mod; ++rank) {
-        v_start_idx.at(rank) = rank * ceil;
-        v_end_idx.at(rank) = v_start_idx.at(rank) + ceil;
-        v_len_idx.at(rank) = ceil;
-    }
-    for (int rank = mod; rank < p; ++rank) {
-        v_start_idx.at(rank) = mod * ceil + (rank - mod) * floor;
-        v_end_idx.at(rank) = v_start_idx.at(rank) + floor;
-        v_len_idx.at(rank) = floor;
-    }
-
-    for (int cum = 0, rank = 0; rank < p; ++rank) {
-        v_cum_idx.at(rank) = cum;
-        cum += v_len_idx.at(rank);
+    if (my_rank < mod) {
+        start_idx = my_rank * ceil;
+        end_idx = start_idx + ceil;
+    } else {
+        start_idx = mod * ceil + (my_rank - mod) * (ceil - 1);
+        end_idx = start_idx + ceil - 1;
     }
 }
 
-void scheduler_v2(int p, int len, vector<int> &v_start_idx, vector<int> &v_end_idx, vector<int> &v_len_idx, vector<int> &v_cum_idx) {
+void scheduler_v2(int my_rank, int p, int len, int &start_idx, int &end_idx) {
     const int BUFFER_SIZE = 4;
 
     if (len < BUFFER_SIZE * p) {
         int _p = std::floor(len / (float)BUFFER_SIZE);
 
-        for (int rank = 0; rank < _p; ++rank) {
-            v_start_idx.at(rank) = rank * BUFFER_SIZE;
-            v_end_idx.at(rank) = v_start_idx.at(rank) + BUFFER_SIZE;
-            v_len_idx.at(rank) = BUFFER_SIZE;
-        }
-        v_start_idx.at(_p) = BUFFER_SIZE * _p;
-        v_end_idx.at(_p) = v_start_idx.at(_p) + len - BUFFER_SIZE * _p;
-        v_len_idx.at(_p) = len - BUFFER_SIZE * _p;
-
-        for (int rank = _p + 1; rank < p; ++rank) {
-            v_start_idx.at(rank) = v_end_idx.at(_p);
-            v_end_idx.at(rank) = v_end_idx.at(_p);
-            v_len_idx.at(rank) = 0;
+        if (my_rank < _p) {
+            start_idx = my_rank * BUFFER_SIZE;
+            end_idx = start_idx + BUFFER_SIZE;
+        } else if (my_rank == _p) {
+            start_idx = BUFFER_SIZE * _p;
+            end_idx = start_idx + len - BUFFER_SIZE * _p;
+        } else {
+            start_idx = 0;
+            end_idx = 0;
         }
 
-        for (int cum = 0, rank = 0; rank < p; ++rank) {
-            v_cum_idx.at(rank) = cum;
-            cum += v_len_idx.at(rank);
-        }
     } else
-        scheduler_v1(p, len, v_start_idx, v_end_idx, v_len_idx, v_cum_idx);
+        scheduler_v1(my_rank, p, len, start_idx, end_idx);
 }
 
 int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_len, int b_len) {
@@ -82,10 +65,6 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
     std::vector<int> diagonal_t = std::vector<int>(max_diag_size, 0);
     std::vector<int> diagonal_t_1 = std::vector<int>(max_diag_size, 0);  // diagonal before current
     std::vector<int> diagonal_t_2 = std::vector<int>(max_diag_size, 0);  // diagonal before diagonal_t_1
-    std::vector<int> v_start_idx = std::vector<int>(p, 0);
-    std::vector<int> v_end_idx = std::vector<int>(p, 0);
-    std::vector<int> v_len_idx = std::vector<int>(p, 0);
-    std::vector<int> v_cum_idx = std::vector<int>(p, 0);  // for gatherv
     int start_idx, end_idx;
 
     for (int iter = 1; iter <= a_len + b_len - 1; ++iter) {
@@ -98,13 +77,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         else
             len = std::min(a_len, b_len) - (iter - std::max(a_len, b_len));
 
-        // if (my_rank == 0)
-        scheduler_v2(p, len, v_start_idx, v_end_idx, v_len_idx, v_cum_idx);
-
-        // MPI_Scatter(&v_start_idx[0], 1, MPI_INTEGER, &start_idx, 1, MPI_INTEGER, 0, comm);
-        // MPI_Scatter(&v_end_idx[0], 1, MPI_INTEGER, &end_idx, 1, MPI_INTEGER, 0, comm);
-        start_idx = v_start_idx[my_rank];
-        end_idx = v_end_idx[my_rank];
+        scheduler_v2(my_rank, p, len, start_idx, end_idx);
 
         if (end_idx > start_idx) {
             diagonal_t_p = std::vector<int>(len, 0);
@@ -125,20 +98,24 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                 }
             }
         }
-        diagonal_t = std::vector<int>(len, 0);
+        diagonal_t_2 = std::vector<int>(len, 0);
 
-        MPI_Allgatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INTEGER, &diagonal_t[0], &v_len_idx[0], &v_cum_idx[0], MPI_INTEGER, comm);
+        MPI_Allreduce(&diagonal_t_p[0], &diagonal_t_2[0], len, MPI_INT, MPI_SUM, comm);
 
-        // if (my_rank == 0) {
-        //     std::cout << "iteration " << iter << ": ";
-        //     for (int diag : diagonal_t) std::cout << diag << " ";
-        //     std::cout << std::endl;
-        // }
-        diagonal_t_2 = diagonal_t_1;
-        diagonal_t_1 = diagonal_t;
-        if (my_rank == 0) {
-            curr_max = std::max(curr_max, *std::max_element(diagonal_t.begin(), diagonal_t.end()));
+        if (len <= 100) {
+            if (my_rank == 0) {
+                curr_max = std::max(curr_max, *std::max_element(diagonal_t_2.begin(), diagonal_t_2.end()));
+            }
+        } else {
+            curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin(), diagonal_t_p.end()));
+            if (my_rank == 0) {
+                MPI_Reduce(MPI_IN_PLACE, &curr_max, 1, MPI_INT, MPI_MAX, 0, comm);
+            } else {
+                MPI_Reduce(&curr_max, &curr_max, 1, MPI_INT, MPI_SUM, 0, comm);
+            }
         }
+
+        std::swap(diagonal_t_2, diagonal_t_1);
     }
 
     return curr_max;
