@@ -121,8 +121,10 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         std::swap(diagonal_t_2, diagonal_t_1);
     }
 
-    delete[] a;
-    delete[] b;
+    if (my_rank != 0) {
+        delete[] a;
+        delete[] b;
+    }
 
     return curr_max;
 }
