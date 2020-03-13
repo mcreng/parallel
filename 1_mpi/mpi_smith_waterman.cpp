@@ -101,7 +101,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         }
         std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len, 0);
 
-        MPI_Allreduce(&diagonal_t_p[0], &diagonal_t_2[0], len, MPI_INT, MPI_SUM, comm);
+        MPI_Allreduce(&diagonal_t_p[0], &diagonal_t_2[0], len, MPI_INT, MPI_BOR, comm);
 
         curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin() + start_idx, diagonal_t_p.begin() + end_idx));
 
