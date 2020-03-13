@@ -81,8 +81,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         scheduler_v2(my_rank, p, len, start_idx, end_idx);
 
         if (end_idx > start_idx) {
-            // diagonal_t_p = std::vector<int>(len, 0);
-            std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len - 1, 0);
+            std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len, 0);
             for (int j = start_idx; j < end_idx; ++j) {
                 int x = std::min(iter, a_len - 1) + 1 - j;
                 int y = iter + 1 - x;
@@ -100,18 +99,11 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                 }
             }
         }
-        // diagonal_t_2 = std::vector<int>(len, 0);
-        std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len - 1, 0);
+        std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len, 0);
 
         MPI_Allreduce(&diagonal_t_p[0], &diagonal_t_2[0], len, MPI_INT, MPI_SUM, comm);
 
-        if (len <= 32) {
-            if (my_rank == 0) {
-                curr_max = std::max(curr_max, *std::max_element(diagonal_t_2.begin(), diagonal_t_2.end()));
-            }
-        } else {
-            curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin() + start_idx, diagonal_t_p.begin() + end_idx - 1));
-        }
+        curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin() + start_idx, diagonal_t_p.begin() + end_idx));
 
         std::swap(diagonal_t_2, diagonal_t_1);
     }
@@ -124,7 +116,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
     if (my_rank == 0) {
         MPI_Reduce(MPI_IN_PLACE, &curr_max, 1, MPI_INT, MPI_MAX, 0, comm);
     } else {
-        MPI_Reduce(&curr_max, &curr_max, 1, MPI_INT, MPI_SUM, 0, comm);
+        MPI_Reduce(&curr_max, &curr_max, 1, MPI_INT, MPI_MAX, 0, comm);
     }
     return curr_max;
 }
