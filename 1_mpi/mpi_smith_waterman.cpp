@@ -113,17 +113,17 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                     diagonal_t_p[j] = 0;
                 } else {
                     if (iter < a_len) {
-                        diagonal_t_p[j] = std::max(
-                            std::max(diagonal_t_1[j - 1] - GAP, diagonal_t_1[j] - GAP),
-                            diagonal_t_2[j - 1] + sub_mat(a[x - 1], b[y - 1]));
+                        diagonal_t_p[j] = std::max(0, std::max(
+                                                          std::max(diagonal_t_1[j - 1] - GAP, diagonal_t_1[j] - GAP),
+                                                          diagonal_t_2[j - 1] + sub_mat(a[x - 1], b[y - 1])));
                     } else if (iter == a_len) {
-                        diagonal_t_p[j] = std::max(
-                            std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
-                            diagonal_t_2[j] + sub_mat(a[x - 1], b[y - 1]));
+                        diagonal_t_p[j] = std::max(0, std::max(
+                                                          std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
+                                                          diagonal_t_2[j] + sub_mat(a[x - 1], b[y - 1])));
                     } else {
-                        diagonal_t_p[j] = std::max(
-                            std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
-                            diagonal_t_2[j + 1] + sub_mat(a[x - 1], b[y - 1]));
+                        diagonal_t_p[j] = std::max(0, std::max(
+                                                          std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
+                                                          diagonal_t_2[j + 1] + sub_mat(a[x - 1], b[y - 1])));
                     }
                     curr_max = std::max(curr_max, diagonal_t_p[j]);
                 }
