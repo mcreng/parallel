@@ -98,7 +98,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
 
     int start_idx, end_idx;
     int prev_len = 0;
-    int p_null = p;  // first prcoess id that does not need to do any work
+    int p_null = p;  // first process id that does not need to do any work
 
     for (int iter = 1; iter <= a_len + b_len - 1; ++iter) {
         // len stores how many values are there in the current diagonal.
@@ -111,16 +111,6 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
             len = a_len + b_len - iter;
 
         scheduler_v2(my_rank, p, len, start_idx, end_idx, v_len, v_disp, p_null);
-
-        if (prev_len > 0 && p_null > 0) {
-            if (my_rank == 0) {
-                for (int rank = 1; rank < p_null; ++rank)
-                    MPI_Send(&diagonal_t_1[0], len + 1, MPI_INT, rank, iter, comm);
-            } else if (my_rank < p_null) {
-                MPI_Recv(&diagonal_t_1[0], len + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
-            }
-        }
-        // MPI_Bcast(&diagonal_t_1[0], len + 1, MPI_INT, 0, comm);
 
         if (end_idx > start_idx) {
             // std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len, 0);
@@ -149,8 +139,8 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         }
         // std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len, 0);
 
-        MPI_Gatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, 0, comm);
-        // MPI_Allgatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, comm);
+        // MPI_Gatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, 0, comm);
+        MPI_Allgatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, comm);
 
         curr_max = std::max(curr_max, *std::max_element(diagonal_t_p.begin() + start_idx, diagonal_t_p.begin() + end_idx));
 
