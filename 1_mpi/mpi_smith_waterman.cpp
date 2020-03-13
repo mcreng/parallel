@@ -33,8 +33,8 @@ void scheduler_v1(int my_rank, int p, int len, int &start_idx, int &end_idx, std
     std::fill(v_len.begin(), v_len.begin() + mod, ceil);
     std::fill(v_len.begin() + mod, v_len.end(), ceil - 1);
     for (int cumsum = 0, i = 0; i < p; i++) {
-        v_disp.at(i) = cumsum;
-        cumsum += v_len.at(i);
+        v_disp[i] = cumsum;
+        cumsum += v_len[i];
     }
     // }
 }
@@ -60,11 +60,11 @@ void scheduler_v2(int my_rank, int p, int len, int &start_idx, int &end_idx, std
 
         // if (my_rank == 0) {
         std::fill(v_len.begin(), v_len.begin() + _p, BUFFER_SIZE);
-        v_len.at(_p) = len - BUFFER_SIZE * _p;
+        v_len[_p] = len - BUFFER_SIZE * _p;
         std::fill(v_len.begin() + _p + 1, v_len.end(), 0);
         for (int cumsum = 0, i = 0; i < p; i++) {
-            v_disp.at(i) = cumsum;
-            cumsum += v_len.at(i);
+            v_disp[i] = cumsum;
+            cumsum += v_len[i];
         }
         // }
 
@@ -123,25 +123,31 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         // MPI_Bcast(&diagonal_t_1[0], len + 1, MPI_INT, 0, comm);
 
         if (end_idx > start_idx) {
-            std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len, 0);
+            // std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len, 0);
             for (int j = start_idx; j < end_idx; ++j) {
                 int x = std::min(iter, a_len - 1) + 1 - j;
                 int y = iter + 1 - x;
 
                 if (x == 0 || y == 0) {
-                    diagonal_t_p.at(j) = 0;
+                    diagonal_t_p[j] = 0;
                 } else {
                     if (iter < a_len) {
-                        diagonal_t_p.at(j) = std::max({0, diagonal_t_1.at(j - 1) - GAP, diagonal_t_1.at(j) - GAP, diagonal_t_2.at(j - 1) + sub_mat(a[x - 1], b[y - 1])});
+                        diagonal_t_p[j] = std::max(
+                            std::max(diagonal_t_1[j - 1] - GAP, diagonal_t_1[j] - GAP),
+                            diagonal_t_2[j - 1] + sub_mat(a[x - 1], b[y - 1]));
                     } else if (iter == a_len) {
-                        diagonal_t_p.at(j) = std::max({0, diagonal_t_1.at(j) - GAP, diagonal_t_1.at(j + 1) - GAP, diagonal_t_2.at(j) + sub_mat(a[x - 1], b[y - 1])});
+                        diagonal_t_p[j] = std::max(
+                            std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
+                            diagonal_t_2[j] + sub_mat(a[x - 1], b[y - 1]));
                     } else {
-                        diagonal_t_p.at(j) = std::max({0, diagonal_t_1.at(j) - GAP, diagonal_t_1.at(j + 1) - GAP, diagonal_t_2.at(j + 1) + sub_mat(a[x - 1], b[y - 1])});
+                        diagonal_t_p[j] = std::max(
+                            std::max(diagonal_t_1[j] - GAP, diagonal_t_1[j + 1] - GAP),
+                            diagonal_t_2[j + 1] + sub_mat(a[x - 1], b[y - 1]));
                     }
                 }
             }
         }
-        std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len, 0);
+        // std::fill(diagonal_t_2.begin(), diagonal_t_2.begin() + len, 0);
 
         MPI_Gatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, 0, comm);
         // MPI_Allgatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, comm);
