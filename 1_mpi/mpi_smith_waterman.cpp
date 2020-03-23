@@ -82,7 +82,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         else
             len = a_len + b_len - iter;
 
-        scheduler_v2(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
+        scheduler_v1(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
 
         if (end_idx > start_idx) {
             // std::fill(diagonal_t_p.begin(), diagonal_t_p.begin() + len, 0);
