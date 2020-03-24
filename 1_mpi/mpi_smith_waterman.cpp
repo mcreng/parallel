@@ -82,7 +82,7 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         else
             len = a_len + b_len - iter;
 
-        scheduler_v2(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
+        scheduler_v1(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
 
         if (iter > 1) {
             if (iter < min_len - 1) {
@@ -91,12 +91,20 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                         int _start = std::max(v_disp[i] - 1, 0);
                         int _end = std::min(v_disp[i] + v_len[i], a_len + b_len - 1);
                         // std::cout << iter << " " << i << " " << _start << " " << _end << std::endl;
-                        if (_end - _start > 1)
+                        if (_end - _start <= p + 1)
                             MPI_Send(&diagonal_t_2[_start], _end - _start, MPI_INT, i, iter, comm);
+                        else {
+                            MPI_Send(&diagonal_t_2[_start], 1, MPI_INT, i, iter, comm);
+                            MPI_Send(&diagonal_t_2[_end - p], p, MPI_INT, i, iter, comm);
+                        }
                     }
                 } else {
-                    if (v_len[my_rank] > 1)
+                    if (v_len[my_rank] <= p + 1)
                         MPI_Recv(&diagonal_t_2[std::max(start_idx - 1, 0)], v_len[my_rank] + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                    else {
+                        MPI_Recv(&diagonal_t_2[std::max(start_idx - 1, 0)], 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                        MPI_Recv(&diagonal_t_2[end_idx - p], p, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                    }
                 }
             } else {
                 if (my_rank == 0) {
@@ -104,12 +112,20 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
                         int _start = std::max(v_disp[i], 0);
                         int _end = std::min(v_disp[i] + v_len[i] + 1, a_len + b_len - 1);
                         // std::cout << iter << " " << i << " " << _start << " " << _end << std::endl;
-                        if (_end - _start > 1)
+                        if (_end - _start <= p + 1)
                             MPI_Send(&diagonal_t_2[_start], _end - _start, MPI_INT, i, iter, comm);
+                        else {
+                            MPI_Send(&diagonal_t_2[_start], p, MPI_INT, i, iter, comm);
+                            MPI_Send(&diagonal_t_2[_end - 1], 1, MPI_INT, i, iter, comm);
+                        }
                     }
                 } else {
-                    if (v_len[my_rank] > 1)
-                        MPI_Recv(&diagonal_t_2[std::max(start_idx, 0)], v_len[my_rank] + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                    if (v_len[my_rank] <= p + 1)
+                        MPI_Recv(&diagonal_t_2[start_idx], v_len[my_rank] + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                    else {
+                        MPI_Recv(&diagonal_t_2[start_idx], p, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                        MPI_Recv(&diagonal_t_2[end_idx], 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                    }
                 }
             }
         }
@@ -146,6 +162,8 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
 
         // MPI_Allgatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, comm);
         MPI_Gatherv(&diagonal_t_p[start_idx], end_idx - start_idx, MPI_INT, &diagonal_t_2[0], &v_len[0], &v_disp[0], MPI_INT, 0, comm);
+
+        if (my_rank != 0) std::swap(diagonal_t_2, diagonal_t_p);
     }
 
     if (my_rank != 0) {
