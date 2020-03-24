@@ -27,7 +27,7 @@ void scheduler_v1(int my_rank, int p, int len, int &start_idx, int &end_idx, std
 }
 
 void scheduler_v2(int my_rank, int p, int len, int &start_idx, int &end_idx, std::vector<int> &v_len, std::vector<int> &v_disp) {
-    const int BUFFER_SIZE = 32;
+    const int BUFFER_SIZE = 128;
 
     if (len < BUFFER_SIZE * p) {
         int _p = len / BUFFER_SIZE;
@@ -82,17 +82,35 @@ int smith_waterman(int my_rank, int p, MPI_Comm comm, char *a, char *b, int a_le
         else
             len = a_len + b_len - iter;
 
-        scheduler_v1(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
+        scheduler_v2(my_rank, p, len, start_idx, end_idx, v_len, v_disp);
 
         if (iter > 1) {
-            if (my_rank == 0) {
-                for (int i = 1; i < p; i++) {
-                    int _start = std::max(v_disp[i] - 1, 0);
-                    int _end = std::min(v_disp[i] + v_len[i] + 1, a_len + b_len - 1);
-                    MPI_Send(&diagonal_t_2[_start], _end - _start, MPI_INT, i, iter, comm);
+            if (iter < min_len - 1) {
+                if (my_rank == 0) {
+                    for (int i = 1; i < p; i++) {
+                        int _start = std::max(v_disp[i] - 1, 0);
+                        int _end = std::min(v_disp[i] + v_len[i], a_len + b_len - 1);
+                        // std::cout << iter << " " << i << " " << _start << " " << _end << std::endl;
+                        if (_end - _start > 1)
+                            MPI_Send(&diagonal_t_2[_start], _end - _start, MPI_INT, i, iter, comm);
+                    }
+                } else {
+                    if (v_len[my_rank] > 1)
+                        MPI_Recv(&diagonal_t_2[std::max(start_idx - 1, 0)], v_len[my_rank] + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
                 }
             } else {
-                MPI_Recv(&diagonal_t_2[std::max(start_idx - 1, 0)], v_len[my_rank] + 2, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                if (my_rank == 0) {
+                    for (int i = 1; i < p; i++) {
+                        int _start = std::max(v_disp[i], 0);
+                        int _end = std::min(v_disp[i] + v_len[i] + 1, a_len + b_len - 1);
+                        // std::cout << iter << " " << i << " " << _start << " " << _end << std::endl;
+                        if (_end - _start > 1)
+                            MPI_Send(&diagonal_t_2[_start], _end - _start, MPI_INT, i, iter, comm);
+                    }
+                } else {
+                    if (v_len[my_rank] > 1)
+                        MPI_Recv(&diagonal_t_2[std::max(start_idx, 0)], v_len[my_rank] + 1, MPI_INT, 0, iter, comm, MPI_STATUS_IGNORE);
+                }
             }
         }
 
