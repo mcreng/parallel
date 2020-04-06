@@ -1,0 +1,4 @@
+.vscode
+serial/serial_smith_waterman
+pthreads_smith_waterman
+thread_queue

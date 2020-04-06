@@ -1,16 +1,11 @@
-/**
- * Name: TSE Ho Nam
- * Student id: hntse
- * ITSC email: hntse@connect.ust.hk
-*/
-
-#include "pthreads_smith_waterman.h"
-
 #include <pthread.h>
 #include <semaphore.h>
 
+#include <cassert>
+#include <chrono>
 #include <iostream>
 #include <queue>
+#include <thread>
 #include <vector>
 
 template <class T>
@@ -52,44 +47,46 @@ class ThreadQueue {
     }
 };
 
-/* 2D array storing the scores */
-std::vector<std::vector<int>> *scores;
 bool has_stopped;
-ThreadQueue<std::pair<int, int>> *q;
-char *a, *b;
-int a_len, b_len;
+ThreadQueue<std::pair<int, int>> *queue;
 
 void *handler(void *in_rank) {
     long rank = (long)in_rank;
 
     while (true) {
         if (has_stopped) break;
-        std::pair<int, int> elem = q->dequeue();
+        std::pair<int, int> elem = queue->dequeue();
         if (elem.first != -1 && elem.second != -1)
             printf("Thread %ld got (%d, %d)\n", rank, elem.first, elem.second);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return nullptr;
 }
 
-int smith_waterman(int p, char *a, char *b, int a_len, int b_len) {
-    scores = new std::vector<std::vector<int>>(a_len, std::vector<int>(b_len, 0));
-    q = new ThreadQueue<std::pair<int, int>>(p, std::pair<int, int>(-1, -1));
+int main(int argc, char **argv) {
+    assert(argc == 2 && "Insufficient number of parameters.");
+    int p = atoi(argv[1]);
+
+    queue = new ThreadQueue<std::pair<int, int>>(p, std::pair<int, int>(-1, -1));
+
     std::vector<pthread_t> threads(p);
-    ::a = a;
-    ::b = b;
-    ::a_len = a_len;
-    ::b_len = b_len;
+    has_stopped = false;
 
     for (long rank = 0; rank < p; rank++) {
         pthread_create(&threads[rank], nullptr, handler, (void *)rank);
     }
 
-    q->enqueue({0, 0});
+    for (int i = 0; i < 1000; i++) {
+        queue->enqueue(std::pair<int, int>(i, 2 * i));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    has_stopped = true;
+    queue->destroy();
 
     for (long rank = 0; rank < p; rank++) {
         pthread_join(threads[rank], nullptr);
     }
-    delete scores;
-    delete q;
-    return 0;
+
+    delete queue;
 }
