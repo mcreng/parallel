@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <mutex>
 #include <queue>
 #include <thread>
 #include <vector>
@@ -11,31 +12,30 @@
 template <class T>
 class ThreadQueue {
    private:
-    std::queue<T> _queue;    // queue storing data
-    T _default;              // data to push into queue when stop
-    int _p;                  // number of threads
-    pthread_mutex_t _mutex;  // mutex controlling access to queue
-    sem_t _sem;              // semaphore storing length of queue
+    std::queue<T> _queue;  // queue storing data
+    T _default;            // data to push into queue when stop
+    int _p;                // number of threads
+    std::mutex _mutex;     // mutex controlling access to queue
+    sem_t _sem;            // semaphore storing length of queue
 
    public:
     ThreadQueue(int p, T d) : _default{d}, _p{p} {
-        pthread_mutex_init(&_mutex, nullptr);
         sem_init(&_sem, 0, 0);
     };
 
     void enqueue(T data) {
-        pthread_mutex_lock(&_mutex);
+        _mutex.lock();
         sem_post(&_sem);
         _queue.push(data);
-        pthread_mutex_unlock(&_mutex);
+        _mutex.unlock();
     };
 
     T dequeue() {
         sem_wait(&_sem);
-        pthread_mutex_lock(&_mutex);
+        _mutex.lock();
         T elem = _queue.front();
         _queue.pop();
-        pthread_mutex_unlock(&_mutex);
+        _mutex.unlock();
         return elem;
     }
 
@@ -50,9 +50,7 @@ class ThreadQueue {
 bool has_stopped;
 ThreadQueue<std::pair<int, int>> *queue;
 
-void *handler(void *in_rank) {
-    long rank = (long)in_rank;
-
+void handler(long rank) {
     while (true) {
         if (has_stopped) break;
         std::pair<int, int> elem = queue->dequeue();
@@ -60,7 +58,6 @@ void *handler(void *in_rank) {
             printf("Thread %ld got (%d, %d)\n", rank, elem.first, elem.second);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    return nullptr;
 }
 
 int main(int argc, char **argv) {
@@ -69,11 +66,11 @@ int main(int argc, char **argv) {
 
     queue = new ThreadQueue<std::pair<int, int>>(p, std::pair<int, int>(-1, -1));
 
-    std::vector<pthread_t> threads(p);
+    std::vector<std::thread *> threads(p, nullptr);
     has_stopped = false;
 
     for (long rank = 0; rank < p; rank++) {
-        pthread_create(&threads[rank], nullptr, handler, (void *)rank);
+        threads[rank] = new std::thread(handler, rank);
     }
 
     for (int i = 0; i < 1000; i++) {
@@ -85,7 +82,9 @@ int main(int argc, char **argv) {
     queue->destroy();
 
     for (long rank = 0; rank < p; rank++) {
-        pthread_join(threads[rank], nullptr);
+        threads[rank]->join();
+        delete threads[rank];
+        threads[rank] = nullptr;
     }
 
     delete queue;
