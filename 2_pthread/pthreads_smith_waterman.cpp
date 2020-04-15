@@ -9,87 +9,75 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+#include <algorithm>
+#include <array>
 #include <iostream>
+#include <mutex>
 #include <queue>
+#include <thread>
 #include <vector>
 
-template <class T>
-class ThreadQueue {
-   private:
-    std::queue<T> _queue;    // queue storing data
-    T _default;              // data to push into queue when stop
-    int _p;                  // number of threads
-    pthread_mutex_t _mutex;  // mutex controlling access to queue
-    sem_t _sem;              // semaphore storing length of queue
-
-   public:
-    ThreadQueue(int p, T d) : _default{d}, _p{p} {
-        pthread_mutex_init(&_mutex, nullptr);
-        sem_init(&_sem, 0, 0);
-    };
-
-    void enqueue(T data) {
-        pthread_mutex_lock(&_mutex);
-        sem_post(&_sem);
-        _queue.push(data);
-        pthread_mutex_unlock(&_mutex);
-    };
-
-    T dequeue() {
-        sem_wait(&_sem);
-        pthread_mutex_lock(&_mutex);
-        T elem = _queue.front();
-        _queue.pop();
-        pthread_mutex_unlock(&_mutex);
-        return elem;
-    }
-
-    void destroy() {
-        for (int i = 0; i < _p; ++i) {
-            enqueue(_default);
-        }
-        std::cout << "Destroyed" << std::endl;
-    }
-};
-
 /* 2D array storing the scores */
-std::vector<std::vector<int>> *scores;
-bool has_stopped;
-ThreadQueue<std::pair<int, int>> *q;
-char *a, *b;
-int a_len, b_len;
+int **score;
+/* array storing max of each thread */
+int *max_vals;
+/* barrier */
+pthread_barrier_t barrier;
 
-void *handler(void *in_rank) {
-    long rank = (long)in_rank;
-
-    while (true) {
-        if (has_stopped) break;
-        std::pair<int, int> elem = q->dequeue();
-        if (elem.first != -1 && elem.second != -1)
-            printf("Thread %ld got (%d, %d)\n", rank, elem.first, elem.second);
+void handler(int p, long rank, char *a, char *b, int a_len, int b_len) {
+    /* Range is [block_l, block_r) */
+    int block_l = rank * b_len / p;
+    int block_r = block_l + b_len / p;
+    int n_diagonal = a_len + p - 1;
+    int max_score = 0;
+    for (int i = 0; i < n_diagonal; i++) {
+        int row = i - rank + 1;
+        if (row > 0 && row <= a_len) {
+            for (int j = 1 + block_l; j <= block_r; j++) {
+                score[row][j] = max(0,
+                                    max(score[row - 1][j - 1] + sub_mat(a[row - 1], b[j - 1]),
+                                        max(score[row - 1][j] - GAP,
+                                            score[row][j - 1] - GAP)));
+                max_score = max(max_score, score[row][j]);
+            }
+        }
+        /* Barrier */
+        pthread_barrier_wait(&barrier);
     }
-    return nullptr;
+    max_vals[rank] = max_score;
 }
 
 int smith_waterman(int p, char *a, char *b, int a_len, int b_len) {
-    scores = new std::vector<std::vector<int>>(a_len, std::vector<int>(b_len, 0));
-    q = new ThreadQueue<std::pair<int, int>>(p, std::pair<int, int>(-1, -1));
-    std::vector<pthread_t> threads(p);
-    ::a = a;
-    ::b = b;
-    ::a_len = a_len;
-    ::b_len = b_len;
-
+    score = (int **)malloc(sizeof(int *) * (a_len + 1));
+    for (int i = 0; i <= a_len; i++) {
+        score[i] = (int *)calloc(b_len + 1, sizeof(int));
+    }
+    max_vals = (int *)malloc(sizeof(int) * p);
+    std::vector<std::thread *> threads(p, nullptr);
+    pthread_barrier_init(&barrier, nullptr, p);
     for (long rank = 0; rank < p; rank++) {
-        pthread_create(&threads[rank], nullptr, handler, (void *)rank);
+        threads[rank] = new std::thread(handler, p, rank, a, b, a_len, b_len);
     }
 
-    q->enqueue({0, 0});
-
     for (long rank = 0; rank < p; rank++) {
-        pthread_join(threads[rank], nullptr);
+        threads[rank]->join();
+        delete threads[rank];
+        threads[rank] = nullptr;
     }
-    delete scores;
-    delete q;
-    return 0;
+
+    // for (int i = 0; i < a_len + 1; i++) {
+    //     for (int j = 0; j < b_len + 1; j++) {
+    //         cout << score[i][j] << " ";
+    //     }
+    //     cout << endl;
+    // }
+
+    int max = *(std::max_element(max_vals, max_vals + p));
+
+    for (int i = 0; i <= a_len; i++) {
+        free(score[i]);
+    }
+    free(score);
+    free(max_vals);
+    return max;
 }
